@@ -22,7 +22,8 @@
   const el = {
     video: $('video'), virtual: $('virtual'), empty: $('empty'), speaker: $('speaker'), speakerText: $('speaker-text'),
     caption: $('caption'), badge: $('badge'), stage: $('stage'), list: $('cue-list'), count: $('count'),
-    play: $('btn-play'), time: $('time'), scrub: $('scrub'), ticks: $('ticks'), speed: $('speed'),
+    play: $('btn-play'), time: $('time'), scrub: $('scrub'), speed: $('speed'),
+    timeline: $('timeline'), trackCues: $('track-cues'), trackSpoken: $('track-spoken'), laneSpoken: $('lane-spoken'), playhead: $('playhead'),
     toast: $('toast'), fmt: $('fmt'), search: $('search'), follow: $('follow'),
   };
 
@@ -84,11 +85,18 @@
   }
 
   // ---------- rendering ----------
+  const ICON_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+  const ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+  let lastIcon = null;
+  const blocks = new Map(); // cue id -> block element on the timeline
+
   function render(force) {
     const t = getTime(), dur = duration();
     el.time.textContent = mmss(t) + ' / ' + mmss(dur);
     if (document.activeElement !== el.scrub || force) el.scrub.value = dur ? Math.round((t / dur) * 1000) : 0;
-    el.play.textContent = isPlaying() ? '⏸' : '▶';
+    const playing = isPlaying();
+    if (playing !== lastIcon) { el.play.innerHTML = playing ? ICON_PAUSE : ICON_PLAY; lastIcon = playing; }
+    el.timeline.style.setProperty('--p', dur ? Math.min(1, t / dur) : 0);
 
     const cue = cues.find((c) => t >= c.start && t < c.end) || null;
     const text = cue ? cue.text : '';
@@ -98,8 +106,12 @@
     }
     const id = cue ? cue.id : null;
     if (id !== activeId) {
-      if (activeId !== null && rows.has(activeId)) rows.get(activeId).classList.remove('active');
+      if (activeId !== null) {
+        if (rows.has(activeId)) rows.get(activeId).classList.remove('active');
+        if (blocks.has(activeId)) blocks.get(activeId).classList.remove('active');
+      }
       activeId = id;
+      if (id !== null && blocks.has(id)) blocks.get(id).classList.add('active');
       const row = id !== null ? rows.get(id) : null;
       if (row) {
         row.classList.add('active');
@@ -151,7 +163,7 @@
     const keepTop = el.list.scrollTop;
     rows.clear();
     if (!cues.length) {
-      el.list.innerHTML = '<div class="none">No subtitles yet.<br />Open an .srt or .vtt file, or try the demo.</div>';
+      el.list.innerHTML = '<div class="none"><p class="eyebrow">How it works</p><ol class="steps"><li><span>Load<small>a video and an .srt / .vtt file, or press Try the demo</small></span></li><li><span>Sync<small>quick shift for a constant delay, two-point sync for drift</small></span></li><li><span>Export<small>download the fixed .srt or .vtt</small></span></li></ol></div>';
     } else {
       const html = [];
       cues.forEach((c, i) => {
@@ -173,6 +185,7 @@
     cues.forEach((c, i) => {
       const row = rows.get(c.id);
       if (problems[i].length) bad++;
+      if (blocks.has(c.id)) blocks.get(c.id).classList.toggle('warn', problems[i].length > 0);
       if (!row) return;
       row.classList.toggle('flag', problems[i].length > 0);
       row.querySelector('.issues').textContent = problems[i].length ? '⚠ ' + problems[i].join(' · ') : '';
@@ -190,21 +203,26 @@
       row.querySelector('.t-end').value = S.formatTime(c.end);
     });
     refreshFlags();
-    renderTicks();
+    renderTimeline();
   }
 
   function renderMeta() {
     el.count.textContent = cues.length;
     el.fmt.textContent = fmt ? (fmt === 'demo' ? 'Demo' : fmt.toUpperCase()) + ' · ' + cues.length + ' lines' : '—';
     $('a2-cue').max = $('a1-cue').max = Math.max(1, cues.length);
-    renderTicks();
+    renderTimeline();
   }
 
-  function renderTicks() {
+  function renderTimeline() {
     const dur = duration();
-    if (!dur || !cues.length) { el.ticks.innerHTML = ''; return; }
-    const step = Math.ceil(cues.length / 300);
-    el.ticks.innerHTML = cues.filter((_, i) => i % step === 0).map((c) => `<i style="left:${(c.start / dur) * 100}%"></i>`).join('');
+    blocks.clear();
+    el.laneSpoken.hidden = !demo;
+    if (!dur || (!cues.length && !demo)) { el.trackCues.innerHTML = ''; el.trackSpoken.innerHTML = ''; return; }
+    const blk = (c) => `<i class="blk" data-id="${c.id}" style="left:${(c.start / dur) * 100}%;width:${Math.max(0.2, ((c.end - c.start) / dur) * 100)}%"></i>`;
+    el.trackCues.innerHTML = cues.map(blk).join('');
+    el.trackCues.querySelectorAll('.blk').forEach((x) => blocks.set(+x.dataset.id, x));
+    el.trackSpoken.innerHTML = demo ? demo.truth.map(blk).join('') : '';
+    if (activeId !== null && blocks.has(activeId)) blocks.get(activeId).classList.add('active');
   }
 
   // ---------- state changes with undo/redo ----------
@@ -262,7 +280,7 @@
     demo = null; el.badge.hidden = true;
     clock.playing = false;
     if (!cues.length) baseName = file.name.replace(/\.[^.]+$/, '');
-    el.video.onloadedmetadata = () => { renderTicks(); render(true); };
+    el.video.onloadedmetadata = () => { renderTimeline(); render(true); };
     el.video.onerror = () => toast("This browser can't play that file. Try an MP4 (H.264) or WebM.");
     el.video.playbackRate = parseFloat(el.speed.value);
     toast('Video loaded: ' + file.name);
@@ -461,7 +479,12 @@
   el.play.addEventListener('click', togglePlay);
   el.scrub.addEventListener('input', () => seek((el.scrub.value / 1000) * duration()));
   el.speed.addEventListener('change', () => { if (hasVideo) el.video.playbackRate = parseFloat(el.speed.value); });
-  el.stage.addEventListener('click', togglePlay);
+  el.stage.addEventListener('click', (e) => { if (!e.target.closest('.empty')) togglePlay(); });
+  el.timeline.addEventListener('click', (e) => {
+    const r = el.trackCues.getBoundingClientRect();
+    if (r.width) seek(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * duration());
+  });
+  $('hero-demo').addEventListener('click', () => loadDemo('offset'));
   el.video.addEventListener('timeupdate', () => render(false));
 
   // ---------- caption style (preview only) ----------

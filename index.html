@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Subtitle Studio — fix, sync &amp; convert subtitles in your browser</title>
   <meta name="description" content="Load a video and its SRT/VTT file, fix timing drift with a two-point sync, edit lines, and export SRT or VTT. Everything stays in your browser — nothing is uploaded." />
-  <meta name="theme-color" content="#0f1220" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236c5ce7'/%3E%3Crect x='6' y='19' width='20' height='3' rx='1.5' fill='white'/%3E%3Crect x='9' y='24' width='14' height='3' rx='1.5' fill='white' opacity='.7'/%3E%3C/svg%3E" />
+  <meta name="theme-color" content="#0f0e0c" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ffc83d'/%3E%3Crect x='6' y='17' width='20' height='3.5' rx='1.75' fill='%231a1300'/%3E%3Crect x='9' y='23' width='14' height='3.5' rx='1.75' fill='%231a1300' opacity='.6'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -14,20 +14,20 @@
 
   <header class="top">
     <div class="brand">
-      <span class="logo" aria-hidden="true"><i></i><i></i></span>
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="currentColor"/><rect x="6" y="17" width="20" height="3.5" rx="1.75" fill="#1a1300"/><rect x="9" y="23" width="14" height="3.5" rx="1.75" fill="#1a1300" opacity=".6"/></svg>
       <div>
         <h1>Subtitle Studio</h1>
         <p class="tag">Fix, sync &amp; convert subtitles. Nothing leaves your browser.</p>
       </div>
     </div>
     <div class="actions">
-      <button class="btn ghost" id="btn-demo" title="Load a sample with deliberately late captions">✨ Try the demo</button>
-      <label class="btn" for="file-video">🎬 Video</label>
-      <label class="btn" for="file-subs">📝 Subtitles</label>
+      <button class="btn" id="btn-demo" title="Load a sample with deliberately late captions">Try the demo</button>
+      <label class="btn" for="file-video">Open video</label>
+      <label class="btn" for="file-subs">Open subtitles</label>
       <input id="file-video" type="file" accept="video/*,audio/*" hidden />
       <input id="file-subs" type="file" accept=".srt,.vtt,.txt,text/vtt" hidden />
       <div class="menu">
-        <button class="btn primary" id="btn-export" aria-haspopup="true" aria-expanded="false">⬇ Export</button>
+        <button class="btn primary" id="btn-export" aria-haspopup="true" aria-expanded="false">Export <span aria-hidden="true">▾</span></button>
         <div class="menu-pop" id="export-pop" hidden>
           <button data-export="srt">Download .srt</button>
           <button data-export="vtt">Download .vtt</button>
@@ -43,11 +43,18 @@
     <section class="left" aria-label="Player and tools">
       <div class="stage" id="stage">
         <video id="video" playsinline preload="metadata" hidden></video>
-        <div class="virtual" id="virtual" aria-hidden="true">
-          <div class="speaker" id="speaker"><span class="pulse"></span><span id="speaker-text"></span></div>
+        <div class="virtual" id="virtual">
+          <div class="speaker" id="speaker"><span class="pulse"></span><span class="who">Actually spoken</span><span id="speaker-text"></span></div>
           <div class="empty" id="empty">
-            <h2>Drop a video and a subtitle file here</h2>
-            <p>…or press <b>Try the demo</b> to see captions that are 2.5&nbsp;seconds late — and fix them in one click.</p>
+            <p class="eyebrow">Subtitles, finally in step</p>
+            <h2>Late captions? <em>Fixed in seconds.</em></h2>
+            <p class="lede">Fix timing, edit lines and convert SRT&nbsp;↔&nbsp;VTT. Your files never leave this tab.</p>
+            <div class="cta">
+              <button class="btn primary lg" id="hero-demo">Try the 10-second demo</button>
+              <label class="btn lg" for="file-video">Open a video</label>
+              <label class="btn lg" for="file-subs">Open subtitles</label>
+            </div>
+            <p class="drop">or drop files anywhere on this page</p>
           </div>
         </div>
         <div class="caption" id="caption" aria-live="off"></div>
@@ -56,16 +63,19 @@
       </div>
 
       <div class="transport">
-        <button class="btn icon" id="btn-play" aria-label="Play / pause (Space)">▶</button>
+        <button class="btn icon play" id="btn-play" aria-label="Play / pause (Space)"></button>
         <span class="time" id="time">00:00.0 / 00:00.0</span>
-        <div class="scrub">
-          <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Seek" />
-          <div class="ticks" id="ticks" aria-hidden="true"></div>
-        </div>
+        <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Seek" />
         <select id="speed" aria-label="Playback speed">
           <option value="0.5">0.5×</option><option value="0.75">0.75×</option>
           <option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
         </select>
+      </div>
+
+      <div class="timeline" id="timeline" aria-label="Timeline: each block is one subtitle line. Click to seek.">
+        <div class="lane lane-spoken" id="lane-spoken" hidden><span class="lane-label">Spoken</span><div class="lane-track" id="track-spoken"></div></div>
+        <div class="lane"><span class="lane-label">Captions</span><div class="lane-track" id="track-cues"></div></div>
+        <div class="playhead" id="playhead"></div>
       </div>
 
       <div class="tabs" role="tablist" aria-label="Tools">
@@ -78,7 +88,7 @@
       <div class="panel" id="tab-sync" role="tabpanel" aria-labelledby="t-sync">
         <div class="card">
           <h3>Quick shift</h3>
-          <p class="hint">Every caption is the same amount late or early. Drag, and release to apply.</p>
+          <p class="hint">Every caption is the same amount late or early? Drag, then release to apply.</p>
           <div class="row">
             <input type="range" id="shift-range" min="-10" max="10" step="0.1" value="0" aria-label="Shift all captions in seconds" />
             <output id="shift-out">0.0 s</output>
@@ -93,7 +103,7 @@
 
         <div class="card">
           <h3>Two-point sync <span class="pill">fixes drift</span></h3>
-          <p class="hint">Captions start in sync but slowly slide (wrong frame rate)? Tell me when two lines <em>really</em> are spoken. I stretch everything in between.</p>
+          <p class="hint">Captions start in sync but slowly slide (wrong frame rate)? Tell me when two lines are <em>really</em> spoken and I stretch everything in between.</p>
           <div class="anchor">
             <label>Line # <input type="number" id="a1-cue" min="1" value="1" /></label>
             <label>should be at <input type="text" id="a1-time" placeholder="00:00:00,000" spellcheck="false" /></label>
@@ -167,7 +177,7 @@
       <div class="listhead">
         <h2>Lines <span class="count" id="count">0</span></h2>
         <input type="search" id="search" placeholder="Filter lines…" aria-label="Filter lines" />
-        <label class="check"><input type="checkbox" id="follow" checked /> Follow playhead</label>
+        <label class="check"><input type="checkbox" id="follow" checked /> Follow</label>
       </div>
       <div class="list" id="cue-list" tabindex="-1"></div>
       <div class="listfoot">
