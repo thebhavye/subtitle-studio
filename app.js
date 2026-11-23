@@ -49,7 +49,8 @@
 
   // ---------- playback abstraction (real <video> or a virtual clock for the demo) ----------
   const duration = () => {
-    if (hasVideo) return (el.video.duration || 0) * 1000;
+    if (hasVideo && isFinite(el.video.duration)) return (el.video.duration || 0) * 1000;
+    if (hasVideo) return Math.max(el.video.currentTime * 1000 + 1000, ...cues.map((c) => c.end)); // streams/recordings with unknown length
     if (demo) return demo.duration;
     const last = cues.length ? Math.max(...cues.map((c) => c.end)) : 0;
     return Math.max(60000, last + 3000);
