@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Subtitle Studio — fix, sync &amp; convert subtitles in your browser</title>
+  <meta name="description" content="Load a video and its SRT/VTT file, fix timing drift with a two-point sync, edit lines, and export SRT or VTT. Everything stays in your browser — nothing is uploaded." />
+  <meta name="theme-color" content="#0f1220" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236c5ce7'/%3E%3Crect x='6' y='19' width='20' height='3' rx='1.5' fill='white'/%3E%3Crect x='9' y='24' width='14' height='3' rx='1.5' fill='white' opacity='.7'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <a class="skip" href="#cue-list">Skip to cue list</a>
+
+  <header class="top">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><i></i><i></i></span>
+      <div>
+        <h1>Subtitle Studio</h1>
+        <p class="tag">Fix, sync &amp; convert subtitles. Nothing leaves your browser.</p>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn ghost" id="btn-demo" title="Load a sample with deliberately late captions">✨ Try the demo</button>
+      <label class="btn" for="file-video">🎬 Video</label>
+      <label class="btn" for="file-subs">📝 Subtitles</label>
+      <input id="file-video" type="file" accept="video/*,audio/*" hidden />
+      <input id="file-subs" type="file" accept=".srt,.vtt,.txt,text/vtt" hidden />
+      <div class="menu">
+        <button class="btn primary" id="btn-export" aria-haspopup="true" aria-expanded="false">⬇ Export</button>
+        <div class="menu-pop" id="export-pop" hidden>
+          <button data-export="srt">Download .srt</button>
+          <button data-export="vtt">Download .vtt</button>
+          <button data-export="txt">Download plain text</button>
+          <button data-export="copy">Copy as SRT</button>
+        </div>
+      </div>
+      <button class="btn icon" id="btn-theme" aria-label="Toggle light/dark theme" title="Toggle theme">◐</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="left" aria-label="Player and tools">
+      <div class="stage" id="stage">
+        <video id="video" playsinline preload="metadata" hidden></video>
+        <div class="virtual" id="virtual" aria-hidden="true">
+          <div class="speaker" id="speaker"><span class="pulse"></span><span id="speaker-text"></span></div>
+          <div class="empty" id="empty">
+            <h2>Drop a video and a subtitle file here</h2>
+            <p>…or press <b>Try the demo</b> to see captions that are 2.5&nbsp;seconds late — and fix them in one click.</p>
+          </div>
+        </div>
+        <div class="caption" id="caption" aria-live="off"></div>
+        <div class="badge" id="badge" hidden></div>
+        <div class="dropzone" id="dropzone" hidden>Drop to load</div>
+      </div>
+
+      <div class="transport">
+        <button class="btn icon" id="btn-play" aria-label="Play / pause (Space)">▶</button>
+        <span class="time" id="time">00:00.0 / 00:00.0</span>
+        <div class="scrub">
+          <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Seek" />
+          <div class="ticks" id="ticks" aria-hidden="true"></div>
+        </div>
+        <select id="speed" aria-label="Playback speed">
+          <option value="0.5">0.5×</option><option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+        </select>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Tools">
+        <button role="tab" aria-selected="true" aria-controls="tab-sync" id="t-sync">Sync</button>
+        <button role="tab" aria-selected="false" aria-controls="tab-style" id="t-style" tabindex="-1">Caption style</button>
+        <button role="tab" aria-selected="false" aria-controls="tab-tools" id="t-tools" tabindex="-1">Clean up</button>
+        <button role="tab" aria-selected="false" aria-controls="tab-keys" id="t-keys" tabindex="-1">Shortcuts</button>
+      </div>
+
+      <div class="panel" id="tab-sync" role="tabpanel" aria-labelledby="t-sync">
+        <div class="card">
+          <h3>Quick shift</h3>
+          <p class="hint">Every caption is the same amount late or early. Drag, and release to apply.</p>
+          <div class="row">
+            <input type="range" id="shift-range" min="-10" max="10" step="0.1" value="0" aria-label="Shift all captions in seconds" />
+            <output id="shift-out">0.0 s</output>
+          </div>
+          <div class="row wrap">
+            <button class="btn sm" data-nudge="-1000">−1 s</button>
+            <button class="btn sm" data-nudge="-100">−0.1 s</button>
+            <button class="btn sm" data-nudge="100">+0.1 s</button>
+            <button class="btn sm" data-nudge="1000">+1 s</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Two-point sync <span class="pill">fixes drift</span></h3>
+          <p class="hint">Captions start in sync but slowly slide (wrong frame rate)? Tell me when two lines <em>really</em> are spoken. I stretch everything in between.</p>
+          <div class="anchor">
+            <label>Line # <input type="number" id="a1-cue" min="1" value="1" /></label>
+            <label>should be at <input type="text" id="a1-time" placeholder="00:00:00,000" spellcheck="false" /></label>
+            <button class="btn sm" data-playhead="a1-time">Use playhead</button>
+          </div>
+          <div class="anchor">
+            <label>Line # <input type="number" id="a2-cue" min="1" value="1" /></label>
+            <label>should be at <input type="text" id="a2-time" placeholder="00:00:00,000" spellcheck="false" /></label>
+            <button class="btn sm" data-playhead="a2-time">Use playhead</button>
+          </div>
+          <div class="row wrap">
+            <button class="btn primary" id="btn-linear">Apply two-point sync</button>
+            <button class="btn sm" id="btn-autofill" hidden>Autofill the answers (demo)</button>
+            <button class="btn sm ghost" id="btn-demo-drift">Try a drifting demo</button>
+            <span class="msg" id="linear-msg" role="status"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="tab-style" role="tabpanel" aria-labelledby="t-style" hidden>
+        <div class="card grid2">
+          <label>Size <input type="range" id="st-size" min="14" max="48" value="26" /></label>
+          <label>Background <input type="range" id="st-bg" min="0" max="100" value="65" /></label>
+          <label>Position <input type="range" id="st-pos" min="4" max="70" value="8" /></label>
+          <label>Colour <input type="color" id="st-color" value="#ffffff" /></label>
+        </div>
+        <p class="hint pad">Only changes the on-screen preview — it never alters your subtitle file.</p>
+      </div>
+
+      <div class="panel" id="tab-tools" role="tabpanel" aria-labelledby="t-tools" hidden>
+        <div class="card">
+          <h3>Find &amp; replace</h3>
+          <div class="row wrap">
+            <input type="text" id="fr-find" placeholder="Find" aria-label="Find" />
+            <input type="text" id="fr-repl" placeholder="Replace with" aria-label="Replace with" />
+            <label class="check"><input type="checkbox" id="fr-case" /> Match case</label>
+            <button class="btn sm" id="btn-replace">Replace all</button>
+            <span class="msg" id="fr-msg" role="status"></span>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Quality check</h3>
+          <p class="hint" id="qc-summary">Load subtitles to check reading speed, overlaps and very short cues.</p>
+          <div class="row wrap">
+            <button class="btn sm" id="btn-fix-overlap">Fix overlaps</button>
+            <button class="btn sm" id="btn-next-issue">Jump to next issue</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>History</h3>
+          <div class="row">
+            <button class="btn sm" id="btn-undo">↶ Undo</button>
+            <button class="btn sm" id="btn-redo">↷ Redo</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="tab-keys" role="tabpanel" aria-labelledby="t-keys" hidden>
+        <div class="card keys">
+          <p><kbd>Space</kbd> play / pause</p>
+          <p><kbd>←</kbd> <kbd>→</kbd> seek 2 s (hold <kbd>Shift</kbd> for 10 s)</p>
+          <p><kbd>[</kbd> <kbd>]</kbd> shift all captions −/+ 0.1 s</p>
+          <p><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> undo / redo</p>
+          <p><kbd>Ctrl</kbd>+<kbd>S</kbd> export .srt</p>
+          <p class="hint">Click any line in the list to jump the video to it.</p>
+        </div>
+      </div>
+    </section>
+
+    <aside class="right" aria-label="Subtitle lines">
+      <div class="listhead">
+        <h2>Lines <span class="count" id="count">0</span></h2>
+        <input type="search" id="search" placeholder="Filter lines…" aria-label="Filter lines" />
+        <label class="check"><input type="checkbox" id="follow" checked /> Follow playhead</label>
+      </div>
+      <div class="list" id="cue-list" tabindex="-1"></div>
+      <div class="listfoot">
+        <button class="btn sm" id="btn-add">＋ Add line at playhead</button>
+        <span class="fmt" id="fmt">—</span>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="foot">
+    <p>Built for the Roxten Studios “Build Your Own Website” hackathon · 100% client-side, no uploads, no tracking.</p>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="subs.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
